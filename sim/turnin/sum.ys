@@ -1,0 +1,44 @@
+# Jiaming Ji (jj35553)
+# Iteratively sum linked list elements 
+
+    .pos 0
+init: 
+    irmovq Stack, %rsp
+    call Main
+    halt
+
+    .align 8
+ele1:
+    .quad 0x00a
+    .quad ele2
+ele2:
+    .quad 0x0b0
+    .quad ele3
+ele3:
+    .quad 0xc00
+    .quad 0
+
+Main:
+    irmovq ele1, %rdi
+    call sum
+    ret
+
+
+sum:
+    irmovq $8, %r8     # constant 8
+    xorq %rax, %rax    # val = 0
+    andq %rdi, %rdi    # sets CC for while loop
+    jmp test
+loop:
+    mrmovq (%rdi), %r10     # get the value from the struct
+    addq %r10, %rax        # add to return sum val += ls -> val
+    addq %r8, %rdi         # ls -> next
+    mrmovq (%rdi), %r9    # set %r9 to the memory value of the next address which is a pointer
+    rrmovq %r9, %rdi    # put %r9 back in %rdi. 
+    andq %rdi, %rdi 
+test:
+    jne loop
+    ret
+
+    .pos 0x200
+Stack:

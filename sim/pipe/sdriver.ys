@@ -1,0 +1,186 @@
+#######################################################################
+# Test for copying block of size 4;
+#######################################################################
+	.pos 0
+main:	irmovq Stack, %rsp  	# Set up stack pointer
+
+	# Set up arguments for copy function and then invoke it
+	irmovq $4, %rdx		# src and dst have 4 elements
+	irmovq dest, %rsi	# dst array
+	irmovq src, %rdi	# src array
+	call ncopy		 
+	halt			# should halt with num nonzeros in %rax
+StartFun:
+# Jiaming Ji (jj35553)
+# 
+# Description of ncopy.ys:
+#
+# for optimizing the performance of ncopy, i implemented two methods: 
+# loop unrolling and loading value early so it's ready by the time 
+# the next instructions needs it. In the previous version (The unoptimized version)
+# mrmovq (%rdi), %r10  
+# rmmovq %r10, (%rsi)
+# a cycle is wasted due to data hazard; so I want to eliminate this by adding
+# an effective instruction in between the two instructions shown above, to better
+# optimize throughput. 
+# In my implementation, I added an instruction mrmovq 8(%rdi). %r11
+# in between the mrmovq and rmmovq, to ready the next value before we place the 
+# previous value in src. What this will do is utilizing the time we need to read 
+# the first value and place the first value to also read the second value, because 
+# if we don't, a cylce is wasted. 
+# 
+# For the other method - loop unrolling, instead of reading and placing one value 
+# in one iteration, I am reading and placing four values in one iteration - four is 
+# just an arbitrary number, could be 3, 5, etc.. by the time the number of remaining 
+# values is less than 4, we treat each one individually. 
+# 
+# The first part of the assembly is setting up everything: set the counter to 0 
+# check if length is greater than or equal to four.
+#
+# The second part of the assembly is the loop unrolling - if the length is >= 4, 
+# we will read and place four values in one loop iteration 
+#
+# The third part of the assembly is treating the remainding values individually based 
+# on the length of the remainder. 
+#
+# All the detailed steps explanations are written as comments right next to the assembly code 
+#
+#
+#
+#
+#/* $begin ncopy-ys */
+##################################################################
+# ncopy.ys - Copy a src block of len words to dst.
+# Return the number of positive words (>0) contained in src.
+#
+# Include your name and ID here.
+#
+# Describe how and why you modified the baseline code.
+#
+##################################################################
+# Do not modify this portion
+# Function prologue.
+# %rdi = src, %rsi = dst, %rdx = len
+ncopy:
+
+##################################################################
+# You can modify this portion
+	# Loop header
+	xorq %rax,%rax		# count = 0;
+    iaddq $-4, %rdx    # len -= 4
+    jl remainder    # if len is less than 4, we treat it differently
+
+nloop:
+    mrmovq (%rdi), %r10    # read first value from src
+    mrmovq 8(%rdi), %r11    # read the second value from src
+    rmmovq %r10, (%rsi)    # move the first value to destination
+    andq %r10, %r10    # is val <= 0
+    jle first    # if val <= 0, go to first
+    iaddq $1, %rax
+
+first:
+    rmmovq %r11, 8(%rsi)    # move second value to destination
+    mrmovq 16(%rdi), %r10    # read the third value
+    andq %r11, %r11    # is second value <= 0?
+    jle second
+    iaddq $1, %rax
+
+second:
+    mrmovq 24(%rdi), %r11    # read the fourth value 
+    rmmovq %r10, 16(%rsi)    # move the third value 
+    andq %r10, %r10
+    jle third
+    iaddq $1, %rax
+
+third:
+    rmmovq %r11, 24(%rsi)    # move the fourth value to dest
+    andq %r11, %r11
+    jle fourth
+    iaddq $1, %rax
+
+fourth:
+    iaddq $32, %rdi    # update the src pointer, point to the fifth element
+    iaddq $32, %rsi    # update the dest pointer, point to the fifth position
+    iaddq $-4, %rdx    # subtract 4 from length to determine which label to jump to
+    jge nloop
+
+remainder:
+    iaddq $3, %rdx    # since we subtracted 4 abover, we have to add it back if we have remainders
+    jl Done    # if we have no elements left, we go to Done, else we proceeed
+    mrmovq (%rdi), %r10    # since we have at least one element in the array, we read it
+    mrmovq 8(%rdi), %r11    # read the next elements in advance
+    rmmovq %r10, (%rsi)    # move the read value to dest
+    andq %r10, %r10
+    jle r2
+    iaddq $1, %rax
+
+r2:
+    iaddq $-1, %rdx
+    jl Done
+    rmmovq %r11, 8(%rsi)
+    andq %r11, %r11
+    jle r3
+    iaddq $1, %rax
+
+r3:
+    iaddq $-1, %rdx
+    jl Done
+    mrmovq 16(%rdi), %r10    # since this has to be the last element in the array, we don't need read another value in advance
+    rmmovq %r10, 16(%rsi)    # although we are wasting a cycle, but we have no choice but to do so
+    andq %r10, %r10
+    jle Done
+    iaddq $1, %rax
+
+##################################################################
+# Do not modify the following section of code
+# Function epilogue.
+Done:
+	ret
+##################################################################
+# Keep the following label at the end of your function
+End:
+#/* $end ncopy-ys */
+EndFun:
+
+###############################
+# Source and destination blocks 
+###############################
+	.align 8
+src:
+	.quad 1
+	.quad -2
+	.quad -3
+	.quad 4
+	.quad 0xbcdefa # This shouldn't get moved
+
+	.align 16
+Predest:
+	.quad 0xbcdefa
+dest:
+	.quad 0xcdefab
+	.quad 0xcdefab
+	.quad 0xcdefab
+	.quad 0xcdefab
+Postdest:
+	.quad 0xdefabc
+
+.align 8
+# Run time stack
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+
+Stack:

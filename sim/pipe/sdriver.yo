@@ -1,0 +1,186 @@
+                            | #######################################################################
+                            | # Test for copying block of size 4;
+                            | #######################################################################
+0x000:                      | 	.pos 0
+0x000: 30f4a002000000000000 | main:	irmovq Stack, %rsp  	# Set up stack pointer
+                            | 
+                            | 	# Set up arguments for copy function and then invoke it
+0x00a: 30f20400000000000000 | 	irmovq $4, %rdx		# src and dst have 4 elements
+0x014: 30f6f801000000000000 | 	irmovq dest, %rsi	# dst array
+0x01e: 30f7c801000000000000 | 	irmovq src, %rdi	# src array
+0x028: 803200000000000000   | 	call ncopy		 
+0x031: 00                   | 	halt			# should halt with num nonzeros in %rax
+0x032:                      | StartFun:
+                            | # Jiaming Ji (jj35553)
+                            | # 
+                            | # Description of ncopy.ys:
+                            | #
+                            | # for optimizing the performance of ncopy, i implemented two methods: 
+                            | # loop unrolling and loading value early so it's ready by the time 
+                            | # the next instructions needs it. In the previous version (The unoptimized version)
+                            | # mrmovq (%rdi), %r10  
+                            | # rmmovq %r10, (%rsi)
+                            | # a cycle is wasted due to data hazard; so I want to eliminate this by adding
+                            | # an effective instruction in between the two instructions shown above, to better
+                            | # optimize throughput. 
+                            | # In my implementation, I added an instruction mrmovq 8(%rdi). %r11
+                            | # in between the mrmovq and rmmovq, to ready the next value before we place the 
+                            | # previous value in src. What this will do is utilizing the time we need to read 
+                            | # the first value and place the first value to also read the second value, because 
+                            | # if we don't, a cylce is wasted. 
+                            | # 
+                            | # For the other method - loop unrolling, instead of reading and placing one value 
+                            | # in one iteration, I am reading and placing four values in one iteration - four is 
+                            | # just an arbitrary number, could be 3, 5, etc.. by the time the number of remaining 
+                            | # values is less than 4, we treat each one individually. 
+                            | # 
+                            | # The first part of the assembly is setting up everything: set the counter to 0 
+                            | # check if length is greater than or equal to four.
+                            | #
+                            | # The second part of the assembly is the loop unrolling - if the length is >= 4, 
+                            | # we will read and place four values in one loop iteration 
+                            | #
+                            | # The third part of the assembly is treating the remainding values individually based 
+                            | # on the length of the remainder. 
+                            | #
+                            | # All the detailed steps explanations are written as comments right next to the assembly code 
+                            | #
+                            | #
+                            | #
+                            | #
+                            | #/* $begin ncopy-ys */
+                            | ##################################################################
+                            | # ncopy.ys - Copy a src block of len words to dst.
+                            | # Return the number of positive words (>0) contained in src.
+                            | #
+                            | # Include your name and ID here.
+                            | #
+                            | # Describe how and why you modified the baseline code.
+                            | #
+                            | ##################################################################
+                            | # Do not modify this portion
+                            | # Function prologue.
+                            | # %rdi = src, %rsi = dst, %rdx = len
+0x032:                      | ncopy:
+                            | 
+                            | ##################################################################
+                            | # You can modify this portion
+                            | 	# Loop header
+0x032: 6300                 | 	xorq %rax,%rax		# count = 0;
+0x034: c0f2fcffffffffffffff |     iaddq $-4, %rdx    # len -= 4
+0x03e: 721201000000000000   |     jl remainder    # if len is less than 4, we treat it differently
+                            | 
+0x047:                      | nloop:
+0x047: 50a70000000000000000 |     mrmovq (%rdi), %r10    # read first value from src
+0x051: 50b70800000000000000 |     mrmovq 8(%rdi), %r11    # read the second value from src
+0x05b: 40a60000000000000000 |     rmmovq %r10, (%rsi)    # move the first value to destination
+0x065: 62aa                 |     andq %r10, %r10    # is val <= 0
+0x067: 717a00000000000000   |     jle first    # if val <= 0, go to first
+0x070: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+0x07a:                      | first:
+0x07a: 40b60800000000000000 |     rmmovq %r11, 8(%rsi)    # move second value to destination
+0x084: 50a71000000000000000 |     mrmovq 16(%rdi), %r10    # read the third value
+0x08e: 62bb                 |     andq %r11, %r11    # is second value <= 0?
+0x090: 71a300000000000000   |     jle second
+0x099: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+0x0a3:                      | second:
+0x0a3: 50b71800000000000000 |     mrmovq 24(%rdi), %r11    # read the fourth value 
+0x0ad: 40a61000000000000000 |     rmmovq %r10, 16(%rsi)    # move the third value 
+0x0b7: 62aa                 |     andq %r10, %r10
+0x0b9: 71cc00000000000000   |     jle third
+0x0c2: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+0x0cc:                      | third:
+0x0cc: 40b61800000000000000 |     rmmovq %r11, 24(%rsi)    # move the fourth value to dest
+0x0d6: 62bb                 |     andq %r11, %r11
+0x0d8: 71eb00000000000000   |     jle fourth
+0x0e1: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+0x0eb:                      | fourth:
+0x0eb: c0f72000000000000000 |     iaddq $32, %rdi    # update the src pointer, point to the fifth element
+0x0f5: c0f62000000000000000 |     iaddq $32, %rsi    # update the dest pointer, point to the fifth position
+0x0ff: c0f2fcffffffffffffff |     iaddq $-4, %rdx    # subtract 4 from length to determine which label to jump to
+0x109: 754700000000000000   |     jge nloop
+                            | 
+0x112:                      | remainder:
+0x112: c0f20300000000000000 |     iaddq $3, %rdx    # since we subtracted 4 abover, we have to add it back if we have remainders
+0x11c: 72c601000000000000   |     jl Done    # if we have no elements left, we go to Done, else we proceeed
+0x125: 50a70000000000000000 |     mrmovq (%rdi), %r10    # since we have at least one element in the array, we read it
+0x12f: 50b70800000000000000 |     mrmovq 8(%rdi), %r11    # read the next elements in advance
+0x139: 40a60000000000000000 |     rmmovq %r10, (%rsi)    # move the read value to dest
+0x143: 62aa                 |     andq %r10, %r10
+0x145: 715801000000000000   |     jle r2
+0x14e: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+0x158:                      | r2:
+0x158: c0f2ffffffffffffffff |     iaddq $-1, %rdx
+0x162: 72c601000000000000   |     jl Done
+0x16b: 40b60800000000000000 |     rmmovq %r11, 8(%rsi)
+0x175: 62bb                 |     andq %r11, %r11
+0x177: 718a01000000000000   |     jle r3
+0x180: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+0x18a:                      | r3:
+0x18a: c0f2ffffffffffffffff |     iaddq $-1, %rdx
+0x194: 72c601000000000000   |     jl Done
+0x19d: 50a71000000000000000 |     mrmovq 16(%rdi), %r10    # since this has to be the last element in the array, we don't need read another value in advance
+0x1a7: 40a61000000000000000 |     rmmovq %r10, 16(%rsi)    # although we are wasting a cycle, but we have no choice but to do so
+0x1b1: 62aa                 |     andq %r10, %r10
+0x1b3: 71c601000000000000   |     jle Done
+0x1bc: c0f00100000000000000 |     iaddq $1, %rax
+                            | 
+                            | ##################################################################
+                            | # Do not modify the following section of code
+                            | # Function epilogue.
+0x1c6:                      | Done:
+0x1c6: 90                   | 	ret
+                            | ##################################################################
+                            | # Keep the following label at the end of your function
+0x1c7:                      | End:
+                            | #/* $end ncopy-ys */
+0x1c7:                      | EndFun:
+                            | 
+                            | ###############################
+                            | # Source and destination blocks 
+                            | ###############################
+0x1c8:                      | 	.align 8
+0x1c8:                      | src:
+0x1c8: 0100000000000000     | 	.quad 1
+0x1d0: feffffffffffffff     | 	.quad -2
+0x1d8: fdffffffffffffff     | 	.quad -3
+0x1e0: 0400000000000000     | 	.quad 4
+0x1e8: fadebc0000000000     | 	.quad 0xbcdefa # This shouldn't get moved
+                            | 
+0x1f0:                      | 	.align 16
+0x1f0:                      | Predest:
+0x1f0: fadebc0000000000     | 	.quad 0xbcdefa
+0x1f8:                      | dest:
+0x1f8: abefcd0000000000     | 	.quad 0xcdefab
+0x200: abefcd0000000000     | 	.quad 0xcdefab
+0x208: abefcd0000000000     | 	.quad 0xcdefab
+0x210: abefcd0000000000     | 	.quad 0xcdefab
+0x218:                      | Postdest:
+0x218: bcfade0000000000     | 	.quad 0xdefabc
+                            | 
+0x220:                      | .align 8
+                            | # Run time stack
+0x220: 0000000000000000     | 	.quad 0
+0x228: 0000000000000000     | 	.quad 0
+0x230: 0000000000000000     | 	.quad 0
+0x238: 0000000000000000     | 	.quad 0
+0x240: 0000000000000000     | 	.quad 0
+0x248: 0000000000000000     | 	.quad 0
+0x250: 0000000000000000     | 	.quad 0
+0x258: 0000000000000000     | 	.quad 0
+0x260: 0000000000000000     | 	.quad 0
+0x268: 0000000000000000     | 	.quad 0
+0x270: 0000000000000000     | 	.quad 0
+0x278: 0000000000000000     | 	.quad 0
+0x280: 0000000000000000     | 	.quad 0
+0x288: 0000000000000000     | 	.quad 0
+0x290: 0000000000000000     | 	.quad 0
+0x298: 0000000000000000     | 	.quad 0
+                            | 
+0x2a0:                      | Stack:

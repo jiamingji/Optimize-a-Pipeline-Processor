@@ -1,0 +1,46 @@
+# Jiaming Ji (jj35553)
+# copy value from source to destination
+
+    .pos 0
+init: 
+    irmovq Stack, %rsp
+    call Main
+    halt
+
+    .align 8
+src:
+    .quad 0x00a
+    .quad 0x0b0
+    .quad 0xc00
+dest:
+    .quad 0x111
+    .quad 0x222
+    .quad 0x333
+
+Main:
+    irmovq src, %rdi
+    irmovq dest, %rsi
+    irmovq $3, %rdx
+    call copy
+    ret
+
+copy:
+    xorq %rax, %rax    # result = 0
+loop:
+    andq %rdx, %rdx    # while len > 0
+    je end    # if len == 0, jump to end 
+    mrmovq (%rdi), %r8   # val = *src
+    rmmovq %r8, (%rsi)    # *dest = val
+    irmovq $8, %r9
+    addq %r9, %rdi  # update src pointer
+    addq %r9,  %rsi   # update dest pointer
+    xorq %r8, %rax 
+    irmovq $1, %r9    # %r9 = 1
+    subq %r9, %rdx    # subtract 1 from length 
+    jne loop    # if length != 0, go back to the beginning of the loop 
+end:
+    ret
+
+    .pos 0x200
+Stack:
+
